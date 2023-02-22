@@ -38,13 +38,11 @@ function interact(agent1::Agent, agent2::Agent, dist::Float64, affect::Bool)
     else
         direction = dist / abs(dist)
         if agent1.group == agent2.group
-            agent1.I = limit(agent1.I + agent1.R * direction, "trunc")
+            agent1.I = limit(agent1.I + agent1.R * direction / 3, "trunc")
         else
-            agent1.I = limit(agent1.I - agent1.R * (direction) * (1 - agent1.T), "trunc")
+            agent1.I = limit(agent1.I - agent1.R * direction * (1-agent1.T) / 1.5, "trunc")
         end
     end
-
-
 
 end
 
@@ -93,13 +91,22 @@ function constantSuite(trials::Int64,cycles::Int64, n_agents::Int64, E::Vector{F
             for r in eachindex(R)
                 res::Vector{Vector{Vector{Float64}}} = []
                 for tr=1:trials
-                    agents = [Agent(i, limit(randn() / 5 + .5, "norm"), E[e], T[t], R[r], rand(['A','B'])) for i=1:n_agents]
+                    agents::Vector{Agent} = []
+                    for i in 1:100
+                        group = rand(['A','B'])
+                        mean = group == 'B' ? .45 : .55
+                        push!(agents, Agent(i, limit(randn() / 5 + mean, "norm"), E[e], T[t], R[r], group))
+                    end
+                    #agents = [Agent(i, limit(randn() / 5 + .5, "norm"), E[e], T[t], R[r], rand(['A','B'])) for i=1:n_agents]
                     push!(res, runARM(cycles, agents, affect))
+                end
+                if summary
+                    summ = avgSeries(res)
                 end
                 lock(lk) do
                     index = (e - 1) * length(T) * length(R) + (t - 1) * length(R) + r
                     if summary
-                        results[index] = [E[e], T[t], R[r], avgSeries(res)]
+                        results[index] = [E[e], T[t], R[r], summ]
                     else
                         results[index] = [E[e], T[t], R[r], res]
                     end
@@ -179,8 +186,15 @@ function compareHists(agents1::Vector{Agent}, label1::String, agents2::Vector{Ag
   
       end
       
-      add_trace!(p, histogram(x=[a.I for a in agents1], nbinsx=100, marker_color=[a.group == 'B' ? "blue" : "red" for a in agents1], opacity=0.6), row=i, col=1)
-      add_trace!(p, histogram(x=[a.I for a in agents2], nbinsx=100, marker_color=[a.group == 'B' ? "blue" : "red" for a in agents1], opacity=0.6), row=i, col=2)
+      blue1 = [a.I for a in agents1 if a.group == 'B']
+      red1 = [a.I for a in agents1 if a.group == 'A']
+      add_trace!(p, histogram(x=blue1, nbinsx=50, marker_color="blue", opacity=0.4), row=i, col=1)
+      add_trace!(p, histogram(x=red1, nbinsx=50, marker_color="red", opacity=0.4), row=i, col=1)
+
+      blue2 = [a.I for a in agents2 if a.group == 'B']
+      red2 = [a.I for a in agents2 if a.group == 'A']
+      add_trace!(p, histogram(x=blue2, nbinsx=50, marker_color="blue", opacity=0.4), row=i, col=2)
+      add_trace!(p, histogram(x=red2, nbinsx=50, marker_color="red", opacity=0.4), row=i, col=2)
   
     end
   
@@ -189,7 +203,8 @@ function compareHists(agents1::Vector{Agent}, label1::String, agents2::Vector{Ag
       title_text="Comparing $(label1) to $(label2)", 
       showlegend=false, 
       width=500, 
-      height=200*length(cycles)
+      height=200*length(cycles),
+      barmode="overlay"
     )
 
     return p
@@ -202,6 +217,7 @@ function compareHists(agents1::Vector{Agent}, label1::String, agents2::Vector{Ag
     for i in range2
         row::Vector{Float64} = []
         for j in range1
+            print()
             if inorder
                 if E >= 0 p = searchRes(results, E, i, j)[4][10000]
                 elseif T >= 0 p = searchRes(results, i, T, j)[4][10000]
@@ -224,22 +240,21 @@ function compareHists(agents1::Vector{Agent}, label1::String, agents2::Vector{Ag
     )
 end
 
-
 println("number threads: ", Threads.nthreads())
 
-const E = [i for i in .05:.1:.95]
-const T = [i for i in .05:.1:.95]
-const R = [i for i in .05:.1:.95]
+const E = [i for i in .05:.05:.95]
+const T = [i for i in .05:.05:.95]
+const R = [i for i in .05:.05:.95]
 
-@time results = constantSuite(10, 25000, 1000, E, T, R, true, true);
+@time results = constantSuite(10, 25000, 100, E, T, R, false, true);
 
 #avg_results = getAvgResults(results);
 
 js = JSON.json(results)
 
-open("results_affect.json", "w") do f
+open("id_results.json", "w") do f
     write(f, js)
 end
 
 # julia --threads 20 armtest.jl 
-# 2631.287513 seconds
+# 225.102388 seconds
