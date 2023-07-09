@@ -1,5 +1,98 @@
-using PlotlyJS, Statistics, BenchmarkTools, DataFrames, JSON, StatsBase, Random, Distributions, KernelDensity, ProgressBars, CSV, DataFramesMeta, PlotlyBase, DataStructures
-include("armtest.jl")
+using PlotlyJS
+using Statistics
+using BenchmarkTools 
+using DataFrames
+using JSON
+using StatsBase
+using Random
+using Distributions 
+using KernelDensity
+using ProgressBars
+using CSV
+using DataFramesMeta
+using PlotlyBase 
+using DataStructures
+
+include("ARM.jl")
+
+function ideological_reaction(T)
+
+    d_values = -1:0.01:1  # Range of d values
+
+    p = make_subplots(
+      rows=3, 
+      cols=1, 
+      shared_xaxes=true,
+      shared_yaxes=true,
+      row_titles=["original", "ingroup", "outgroup"]
+    )
+    
+    # Create a plot
+    for r in [.05, .15, .25, .35, .45, .55, .65, .75, .85, .95]
+        
+        i_values = [abs(d) <= T ? r*d : -r*d for d in d_values]
+        
+        trace = scatter(x=d_values, y=i_values, mode="lines")
+        add_trace!(p, trace, row=1, col=1)
+        
+    end
+
+    for r in [.05, .15, .25, .35, .45, .55, .65, .75, .85, .95]
+        
+        i_in = [r * abs(d) / d for d in d_values]
+
+        trace = scatter(x=d_values, y=i_in, mode="lines")
+        add_trace!(p, trace, row=2, col=1)
+        
+    end
+
+    for r in [.05, .15, .25, .35, .45, .55, .65, .75, .85, .95]
+        
+        i_out = [- r * (abs(d) * (1-T)) / d for d in d_values]
+
+        trace = scatter(x=d_values, y=i_out, mode="lines")
+        add_trace!(p, trace, row=3, col=1)
+        
+    end
+
+    relayout!(p,
+        title="Reaction Distribution (T=$(T))", 
+        showlegend=false
+    )
+    
+    return p
+end
+
+function ideological_exposure()
+
+    d_values = 0:0.01:1  # Range of d values
+    p = plot()
+    
+    # Create a plot
+    for e in [.05, .15, .25, .35, .45, .55, .65, .75, .85, .95]
+        p_values = [(.5)^(d/e) for d in d_values]
+        trace = scatter(;x=d_values, y=p_values, mode="lines", name="E=$(e)")
+        addtraces!(p, trace)
+    end
+
+    line_trace = scatter(;x=[1/3, 1/3], y=[0, 1], mode="lines", line=attr(color="black"), name="outgroup exposure")
+    addtraces!(p, line_trace)
+
+    relayout!(p,
+        title="Exposure Distribution", 
+        xaxis_title="d", 
+        yaxis_title="p"
+    )
+    return p
+end
+
+function cohens_d(group1, group2)
+    n1, n2 = length(group1), length(group2)
+    var1, var2 = var(group1), var(group2)
+    pooled_var = ((n1 - 1)*var1 + (n2 - 1)*var2) / (n1 + n2 - 2)
+    d = abs(mean(group1) - mean(group2)) / sqrt(pooled_var)
+    return d
+end
 
 function get_series(df, variable)
 
@@ -36,6 +129,7 @@ function get_series(df, variable)
 
     stats["perc_dem"] = size(filter(row -> row["VCF0302"] == "1", df), 1) / size(df, 1)
     stats["perc_rep"] = size(filter(row -> row["VCF0302"] == "5", df), 1) / size(df, 1)
+    stats["cohens"] = []
 
     @assert stats["perc_dem"] + stats["perc_rep"] == 1
 
@@ -66,6 +160,8 @@ function get_series(df, variable)
             push!(dem_stats["diffs"], dem_stats["mean"][t] - dem_stats["mean"][t-1])
             push!(rep_stats["diffs"], rep_stats["mean"][t] - rep_stats["mean"][t-1])
         end
+
+        push!(stats["cohens"], cohens_d(rep_df[!, variable], dem_df[!, variable]))
         
     end
 
@@ -264,79 +360,28 @@ function get_optimals(
 
 end
 
-df = CSV.read("raw_data/anes_timeseries_cdf_csv_20220916/anes_timeseries_cdf_csv_20220916.csv", DataFrame);
-filtered_df = df[(df[:, "VCF0302"] .== "1") .| (df[:, "VCF0302"] .== "5"), :];
+function optimalMap(optimals::Vector{Any}, variable::String, E::Float64, T::Float64, R::Float64, range1::Vector{Float64}, range2::Vector{Float64}, inorder::Bool)
 
-var_map = SortedDict{String, String}(
-    "VCF0834" => "Women should be in the home?", # 7
-    "VCF0838" => "Should abortion be legal?", #16
-    "VCF0876a" => "Laws shouldn't protect homosexuality?", #9
-    "VCF0879" => "Decrease number of immigrants?", #9
-    "VCF9043" => "Should school prayer be allowed?", #7
-    "VCF9237" => "Oppose death penalty?", #5
-    "VCF9238" => "Should be easier to buy guns?", #6
-    "VCF0830" => "Blacks shouldn't have aid?", #17
-    "VCF0867a" => "Oppose Affirmative Action?", #12
-    "VCF0815" => "Segregation", #6
-    "VCF0817" => "There shouldn't be school busing for integration?", #5
-    "VCF0842" => "Environmental Regulation is too burdensome?" #4
-);
-
-plots = []
-p = make_subplots(rows=floor(Int, length(var_map) / 4), cols=4)
-
-global ctr = 0
-full_results = Dict{String, Any}()
-for variable in keys(var_map)
-
-    res = get_series(filtered_df, variable)
-    full_results[variable] = res
-    traces = display_series(res, var_map)
-    
-    for t in traces
-        add_trace!(p, t, row=floor(Int, ctr / 4) + 1, col=ctr % 4 + 1)
+    heat_dat = Array{Float64, 2}(undef, 0, length(range2))
+    for i in range2
+        row::Vector{Float64} = []
+        for j in range1
+            if inorder
+                if E >= 0 p = searchRes(optimals, E, i, j)[4][variable]
+                elseif T >= 0 p = searchRes(optimals, i, T, j)[4][variable]
+                else p = searchRes(optimals, i, j, R)[4][variable]
+                end
+            else
+                if E >= 0 p = searchRes(optimals, E, j, i)[4][variable]
+                elseif T >= 0 p = searchRes(optimals, j, T, i)[4][variable]
+                else p = searchRes(optimals, j, i, R)[4][variable]
+                end
+            end
+            push!(row, p)
+        end
+        heat_dat = vcat(heat_dat, reshape(row, 1, length(row)))
     end
 
-    global ctr += 1
-
+    return heatmap(z=heat_dat, x=range1, y=range2, zmin=1.3, zmax=1.7, colorscale=[[0, "rgb(0,128,0)"], [1, "rgb(255,0,0)"]])
 end
 
-println("number threads: ", Threads.nthreads())
-
-const E = [i for i in .05:.05:.95]
-const T = [i for i in .05:.05:.95]
-const R = [i for i in .05:.05:.95]
-
-@time optimals = get_optimals(10, 100, full_results, var_map, E, T, R, false, false)
-
-js = JSON.json(optimals)
-
-open("base_optimals.json", "w") do f
-    write(f, js)
-end
-
-@time optimals = get_optimals(10, 100, full_results, var_map, E, T, R, true, false)
-
-js = JSON.json(optimals)
-
-open("id_optimals.json", "w") do f
-    write(f, js)
-end
-
-@time optimals = get_optimals(10, 100, full_results, var_map, E, T, R, false, true)
-
-js = JSON.json(optimals)
-
-open("h_optimals.json", "w") do f
-    write(f, js)
-end
-
-@time optimals = get_optimals(10, 100, full_results, var_map, E, T, R, true, true)
-
-js = JSON.json(optimals)
-
-open("id_h_optimals.json", "w") do f
-    write(f, js)
-end
-
-# julia --threads 10 armoptimize.jl
