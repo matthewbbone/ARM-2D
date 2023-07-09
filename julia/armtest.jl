@@ -47,9 +47,9 @@ function interact(agent1::Agent, agent2::Agent, dist::Float64, affect_ad::Bool)
     else
         direction = dist / abs(dist)
         if agent1.group == agent2.group
-            agent1.I = limit(agent1.I + agent1.R * direction / 3, "trunc")
+            agent1.I = limit(agent1.I + agent1.R * direction, "trunc")
         else
-            agent1.I = limit(agent1.I - agent1.R * direction * (1-agent1.T) / 1.5, "trunc")
+            agent1.I = limit(agent1.I - agent1.R * direction * (1-agent1.T), "trunc")
         end
     end
 
@@ -70,7 +70,7 @@ function step(agents::Vector{Agent}, affect_ad::Bool, affect_h::Bool)
     if !affect_h
         prob = .5^(abs(dist) / agent1.E)
     else
-        prob = agent1.group == agent2.group ? 1 - agent1.E : agent1.E
+        prob = agent1.group == agent2.group ? .5^(1/3) : .5^((1/3) / agent1.E)
     end
 
     if rand(Float64) <= prob && dist != 0
@@ -99,15 +99,15 @@ function constantSuite(trials::Int64,cycles::Int64, n_agents::Int64, E::Vector{F
     results::Vector{Any} = zeros(length(E) * length(T) * length(R))
     lk = ReentrantLock()
     
-    
     for e in ProgressBar(eachindex(E))
         Threads.@threads for t in eachindex(T)
             for r in eachindex(R)
                 res::Vector{Vector{Vector{Float64}}} = []
                 for tr=1:trials
                     agents::Vector{Agent} = []
-                    for i in 1:100
-                        group = rand(['A','B'])
+                    group = 'B'
+                    for i in 1:n_agents
+                        group = 'B' == group ? 'A' : 'B'
                         mean = group == 'B' ? .45 : .55
                         push!(agents, Agent(i, limit(randn() / 5 + mean, "norm"), E[e], T[t], R[r], group))
                     end
@@ -195,7 +195,7 @@ function compareHists(agents1::Vector{Agent}, label1::String, agents2::Vector{Ag
   
       if i > 1
   
-        runARM(cycles[i] - cycles[i-1], agents1, true, false)
+        runARM(cycles[i] - cycles[i-1], agents1, false, false)
         runARM(cycles[i] - cycles[i-1], agents2, true, true)
   
       end
@@ -231,7 +231,6 @@ function compareHists(agents1::Vector{Agent}, label1::String, agents2::Vector{Ag
     for i in range2
         row::Vector{Float64} = []
         for j in range1
-            print()
             if inorder
                 if E >= 0 p = searchRes(results, E, i, j)[4][10000]
                 elseif T >= 0 p = searchRes(results, i, T, j)[4][10000]
@@ -256,20 +255,20 @@ function compareHists(agents1::Vector{Agent}, label1::String, agents2::Vector{Ag
     return heatmap(z=heat_dat, x=range1, y=range2, zmin=0, zmax=.25)
 end
 
-println("number threads: ", Threads.nthreads())
+# println("number threads: ", Threads.nthreads())
 
-const E = [i for i in .05:.05:.95]
-const T = [i for i in .05:.05:.95]
-const R = [i for i in .05:.05:.95]
+# const E = [i for i in .05:.05:.95]
+# const T = [i for i in .05:.05:.95]
+# const R = [i for i in .05:.05:.95]
 
-@time results = constantSuite(10, 25000, 100, E, T, R, false, true, true);
+# @time results = constantSuite(30, 500, 100, E, T, R, false, true, true);
 
-#avg_results = getAvgResults(results);
+# # avg_results = getAvgResults(results);
 
-js = JSON.json(results)
+# js = JSON.json(results)
 
-open("h_affect_results.json", "w") do f
-    write(f, js)
-end
+# open("h_affect_results.json", "w") do f
+#     write(f, js)
+# end
 
 # julia --threads 10 armtest.jl 
