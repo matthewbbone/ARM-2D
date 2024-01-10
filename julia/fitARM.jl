@@ -36,7 +36,7 @@ const R = [i for i in .05:.05:.95]
 
 js = JSON.json(optimals)
 
-open("base_optimals.json", "w") do f
+open("outputs/base_optimals.json", "w") do f
     write(f, js)
 end
 
@@ -44,7 +44,7 @@ end
 
 js = JSON.json(optimals)
 
-open("id_optimals.json", "w") do f
+open("outputs/id_optimals.json", "w") do f
     write(f, js)
 end
 
@@ -52,7 +52,7 @@ end
 
 js = JSON.json(optimals)
 
-open("h_optimals.json", "w") do f
+open("outputs/h_optimals.json", "w") do f
     write(f, js)
 end
 
@@ -60,7 +60,7 @@ end
 
 js = JSON.json(optimals)
 
-open("id_h_optimals.json", "w") do f
+open("outputs/id_h_optimals.json", "w") do f
     write(f, js)
 end
 

@@ -224,14 +224,14 @@ function compareHists(agents1::Vector{Agent}, label1::String, agents2::Vector{Ag
         row::Vector{Float64} = []
         for j in range1
             if inorder
-                if E >= 0 p = searchRes(results, E, i, j)[4][10000]
-                elseif T >= 0 p = searchRes(results, i, T, j)[4][10000]
-                else p = searchRes(results, i, j, R)[4][10000]
+                if E >= 0 p = searchRes(results, E, i, j)[4][500]
+                elseif T >= 0 p = searchRes(results, i, T, j)[4][500]
+                else p = searchRes(results, i, j, R)[4][500]
                 end
             else
-                if E >= 0 p = searchRes(results, E, j, i)[4][10000]
-                elseif T >= 0 p = searchRes(results, j, T, i)[4][10000]
-                else p = searchRes(results, j, i, R)[4][10000]
+                if E >= 0 p = searchRes(results, E, j, i)[4][500]
+                elseif T >= 0 p = searchRes(results, j, T, i)[4][500]
+                else p = searchRes(results, j, i, R)[4][500]
                 end
             end
             push!(row, p)
